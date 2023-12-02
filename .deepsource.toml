@@ -1,0 +1,15 @@
+version = 1
+
+exclude_patterns = ["package/**", "example-app/**"]
+
+test_patterns = ["**/Tests/**"]
+
+[[analyzers]]
+name = "test-coverage"
+enabled = true
+
+[[analyzers]]
+name = "swift"
+
+[analyzers.meta]
+swift_version = "5.9"
