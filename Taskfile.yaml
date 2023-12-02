@@ -1,0 +1,196 @@
+version: '3'
+
+tasks:
+    # project dependencies
+    install-pnpm:
+        cmds:
+            - |
+                if command -v brew &> /dev/null; then
+                    brew install pnpm
+                else
+                    npm install -g pnpm
+                fi
+        status:
+            - command -v pnpm &> /dev/null || exit 1
+    install-pre-commit:
+        cmds:
+            - |
+                if command -v brew &> /dev/null; then
+                    brew install pre-commit
+                else
+                    pip install pre-commit
+                fi
+        status:
+            - command -v pre-commit &> /dev/null || exit 1
+    install-sqlc:
+        cmds:
+            - |
+                if command -v brew &> /dev/null; then
+                    brew install sqlc
+                else
+                    go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+                fi
+        status:
+            - command -v sqlc &> /dev/null || exit 1
+    install-atlas:
+        cmds:
+            - |
+                if command -v brew &> /dev/null; then
+                  brew install ariga/tap/atlas
+                else
+                  curl -sSf https://atlasgo.sh | sh
+                fi
+        status:
+            - command -v atlas &> /dev/null || exit 1
+    install-buf:
+        cmds:
+            - |
+                if command -v brew &> /dev/null; then
+                    brew install bufbuild/buf/buf
+                else
+                    npm install -g @bufbuild/buf
+                fi
+        status:
+            - command -v buf &> /dev/null || exit 1
+    install-terraform:
+        cmds:
+            - |
+                if command -v brew &> /dev/null; then
+                    brew tap hashicorp/tap
+                    brew install hashicorp/tap/terraform
+                    brew install tflint
+                else
+                    curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
+                    sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
+                    sudo apt-get update && sudo apt-get install terraform
+                    curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+                fi
+        status:
+            - command -v terraform &> /dev/null || exit 1
+    update-brew:
+        cmds:
+            - |
+                if command -v brew &> /dev/null; then
+                    brew update;
+                    brew upgrade;
+                    brew cleanup || true;
+                fi
+    setup:
+        desc: Setup the project dependencies
+        cmds:
+            - task: update-brew
+            - task: install-pnpm
+            - task: install-pre-commit
+            - task: install-sqlc
+            - task: install-atlas
+            - task: install-buf
+            - task: install-terraform
+            - pre-commit install && pre-commit install --hook-type commit-msg
+            - pnpm install -r
+            - go mod download
+    # repository management
+    update:android:
+        cmds:
+            - ./gradlew wrapper --gradle-version latest
+            - ./gradlew androidDependencies
+            - ./gradlew versionCatalogUpdate
+    lint:android:
+        desc: Lint the android codebase with in-built lint checks
+        cmds:
+            - ./gradlew :sdks:android:sdk:lint
+            - ./gradlew :sdks:android:test-app:lint
+            - ./gradlew spotlessApply
+    update:
+        desc: Update the project dependencies
+        cmds:
+            - task: update-brew
+            - task: update:android
+            - pnpm add -g pnpm && pnpm update -r --latest
+            - go mod tidy && go get -u ./... &> /dev/null
+            - pre-commit autoupdate
+    lint:
+        desc: Lint the project
+        cmds:
+            - pre-commit run --show-diff-on-failure --color=always --all-files
+            - task: lint:android
+    # database
+    db:up:
+        desc: Bring up the local database
+        cmds:
+            - docker compose stop && docker compose up db --detach
+    db:down:
+        desc: Tear down the local database
+        cmds:
+            - docker compose down db
+    migrations:apply:
+        desc: Apply the migrations to the local database
+        cmds:
+            - task: db:up
+            - sleep 2
+            - atlas migrate apply --dir "file://sql/migrations" --url "postgresql://basemind:basemind@localhost:5432/basemind?search_path=public&sslmode=disable"
+    migrations:create:
+        desc: Create a new migration
+        cmds:
+            - task: db:up
+            - sleep 2
+            - atlas migrate diff {{.CLI_ARGS}} --dir "file://sql/migrations" --to "file://sql/schema.sql" --dev-url "postgresql://basemind:basemind@localhost:5432/basemind?search_path=public&sslmode=disable"
+    slqc:generate:
+        desc: Generate the database code from the sqlc.yaml file
+        cmds:
+            - rm -rf shared/go/db/models
+            - sqlc generate
+    slqc:vet:
+        desc: Lint the database schema
+        cmds:
+            - task: db:up
+            - sleep 2
+            - sqlc vet
+    # protobuf
+    buf:generate:
+        desc: Generate gRPC types and code from proto files
+        cmds:
+            - rm -rf gen
+            - npx buf generate
+            - rm -rf gen/go/openai
+            - rm -rf gen/go/cohere
+            - rm -rf gen/ts/gateway
+            - rm -rf gen/ts/ptesting
+            - rm -rf sdks/ios/Sources/BaseMindGateway
+            - mv gen/swift/gateway/v1 sdks/ios/Sources/BaseMindGateway
+            - rm -rf gen/swift
+    buf:lint:
+        desc: Lint the protobuf files
+        cmds:
+            - npx buf lint
+    buf:format:
+        desc: Format the protobuf files
+        cmds:
+            - npx buf format
+    # testing
+    e2e:seed:
+        desc: Seed the local database with testing data
+        cmds:
+            - task: db:up
+            - go run e2e/main.go seed
+    e2e:clean:
+        desc: Clean the local database of all testing data
+        cmds:
+            - task: db:up
+            - go run e2e/main.go clean
+    e2e:create-jwt:
+        desc: Create a JWT from the given applicationId arg
+        cmds:
+            - go run e2e/main.go create-jwt {{.CLI_ARGS}}
+    # gcp commands
+    gcp:deploy-emailsender:
+        desc: Deploys the email sender cloud function to GCP
+        dir: cloud-functions/emailsender
+        cmds:
+            - |
+                gcloud functions deploy email-sender \
+                    --gen2 \
+                    --runtime=go121 \
+                    --region=europe-west3    \
+                    --source=. \
+                    --entry-point=SendgridEmailPubSub \
+                    --trigger-topic=send-email
