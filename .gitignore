@@ -1,6 +1,8 @@
-*.ipa
-*.dSYM.zip
-*.dSYM
 .build/
+.DS_Store
+*.dSYM
+*.dSYM.zip
+*.ipa
 node_modules/
 xcuserdata/
+tmp/
