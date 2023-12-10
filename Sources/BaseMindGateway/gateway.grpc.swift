@@ -260,3 +260,152 @@ public enum Gateway_V1_APIGatewayServiceClientMetadata {
         )
     }
 }
+
+/// The API Gateway service definition.
+///
+/// To build a server, implement a class that conforms to this protocol.
+public protocol Gateway_V1_APIGatewayServiceProvider: CallHandlerProvider {
+    var interceptors: Gateway_V1_APIGatewayServiceServerInterceptorFactoryProtocol? { get }
+
+    /// Request a regular LLM prompt
+    func requestPrompt(request: Gateway_V1_PromptRequest, context: StatusOnlyCallContext) -> EventLoopFuture<Gateway_V1_PromptResponse>
+
+    /// Request a streaming LLM prompt
+    func requestStreamingPrompt(request: Gateway_V1_PromptRequest, context: StreamingResponseCallContext<Gateway_V1_StreamingPromptResponse>) -> EventLoopFuture<GRPCStatus>
+}
+
+public extension Gateway_V1_APIGatewayServiceProvider {
+    var serviceName: Substring {
+        Gateway_V1_APIGatewayServiceServerMetadata.serviceDescriptor.fullName[...]
+    }
+
+    /// Determines, calls and returns the appropriate request handler, depending on the request's method.
+    /// Returns nil for methods not handled by this service.
+    func handle(
+        method name: Substring,
+        context: CallHandlerContext
+    ) -> GRPCServerHandlerProtocol? {
+        switch name {
+        case "RequestPrompt":
+            UnaryServerHandler(
+                context: context,
+                requestDeserializer: ProtobufDeserializer<Gateway_V1_PromptRequest>(),
+                responseSerializer: ProtobufSerializer<Gateway_V1_PromptResponse>(),
+                interceptors: interceptors?.makeRequestPromptInterceptors() ?? [],
+                userFunction: requestPrompt(request:context:)
+            )
+
+        case "RequestStreamingPrompt":
+            ServerStreamingServerHandler(
+                context: context,
+                requestDeserializer: ProtobufDeserializer<Gateway_V1_PromptRequest>(),
+                responseSerializer: ProtobufSerializer<Gateway_V1_StreamingPromptResponse>(),
+                interceptors: interceptors?.makeRequestStreamingPromptInterceptors() ?? [],
+                userFunction: requestStreamingPrompt(request:context:)
+            )
+
+        default:
+            nil
+        }
+    }
+}
+
+/// The API Gateway service definition.
+///
+/// To implement a server, implement an object which conforms to this protocol.
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
+public protocol Gateway_V1_APIGatewayServiceAsyncProvider: CallHandlerProvider, Sendable {
+    static var serviceDescriptor: GRPCServiceDescriptor { get }
+    var interceptors: Gateway_V1_APIGatewayServiceServerInterceptorFactoryProtocol? { get }
+
+    /// Request a regular LLM prompt
+    func requestPrompt(
+        request: Gateway_V1_PromptRequest,
+        context: GRPCAsyncServerCallContext
+    ) async throws -> Gateway_V1_PromptResponse
+
+    /// Request a streaming LLM prompt
+    func requestStreamingPrompt(
+        request: Gateway_V1_PromptRequest,
+        responseStream: GRPCAsyncResponseStreamWriter<Gateway_V1_StreamingPromptResponse>,
+        context: GRPCAsyncServerCallContext
+    ) async throws
+}
+
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
+public extension Gateway_V1_APIGatewayServiceAsyncProvider {
+    static var serviceDescriptor: GRPCServiceDescriptor {
+        Gateway_V1_APIGatewayServiceServerMetadata.serviceDescriptor
+    }
+
+    var serviceName: Substring {
+        Gateway_V1_APIGatewayServiceServerMetadata.serviceDescriptor.fullName[...]
+    }
+
+    var interceptors: Gateway_V1_APIGatewayServiceServerInterceptorFactoryProtocol? {
+        nil
+    }
+
+    func handle(
+        method name: Substring,
+        context: CallHandlerContext
+    ) -> GRPCServerHandlerProtocol? {
+        switch name {
+        case "RequestPrompt":
+            GRPCAsyncServerHandler(
+                context: context,
+                requestDeserializer: ProtobufDeserializer<Gateway_V1_PromptRequest>(),
+                responseSerializer: ProtobufSerializer<Gateway_V1_PromptResponse>(),
+                interceptors: interceptors?.makeRequestPromptInterceptors() ?? [],
+                wrapping: { try await self.requestPrompt(request: $0, context: $1) }
+            )
+
+        case "RequestStreamingPrompt":
+            GRPCAsyncServerHandler(
+                context: context,
+                requestDeserializer: ProtobufDeserializer<Gateway_V1_PromptRequest>(),
+                responseSerializer: ProtobufSerializer<Gateway_V1_StreamingPromptResponse>(),
+                interceptors: interceptors?.makeRequestStreamingPromptInterceptors() ?? [],
+                wrapping: { try await self.requestStreamingPrompt(request: $0, responseStream: $1, context: $2) }
+            )
+
+        default:
+            nil
+        }
+    }
+}
+
+public protocol Gateway_V1_APIGatewayServiceServerInterceptorFactoryProtocol: Sendable {
+    /// - Returns: Interceptors to use when handling 'requestPrompt'.
+    ///   Defaults to calling `self.makeInterceptors()`.
+    func makeRequestPromptInterceptors() -> [ServerInterceptor<Gateway_V1_PromptRequest, Gateway_V1_PromptResponse>]
+
+    /// - Returns: Interceptors to use when handling 'requestStreamingPrompt'.
+    ///   Defaults to calling `self.makeInterceptors()`.
+    func makeRequestStreamingPromptInterceptors() -> [ServerInterceptor<Gateway_V1_PromptRequest, Gateway_V1_StreamingPromptResponse>]
+}
+
+public enum Gateway_V1_APIGatewayServiceServerMetadata {
+    public static let serviceDescriptor = GRPCServiceDescriptor(
+        name: "APIGatewayService",
+        fullName: "gateway.v1.APIGatewayService",
+        methods: [
+            Gateway_V1_APIGatewayServiceServerMetadata.Methods.requestPrompt,
+            Gateway_V1_APIGatewayServiceServerMetadata.Methods.requestStreamingPrompt,
+        ]
+    )
+
+    public enum Methods {
+        public static let requestPrompt = GRPCMethodDescriptor(
+            name: "RequestPrompt",
+            path: "/gateway.v1.APIGatewayService/RequestPrompt",
+            type: GRPCCallType.unary
+        )
+
+        public static let requestStreamingPrompt = GRPCMethodDescriptor(
+            name: "RequestStreamingPrompt",
+            path: "/gateway.v1.APIGatewayService/RequestStreamingPrompt",
+            type: GRPCCallType.serverStreaming
+        )
+    }
+}

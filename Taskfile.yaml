@@ -24,7 +24,7 @@ tasks:
             - rm -rf tmp
             - mkdir -p tmp
             - protoc --swift_opt=Visibility=public --swift_out=tmp proto/gateway/v1/gateway.proto
-            - protoc --grpc-swift_opt=Client=true,Server=false,Visibility=Public --grpc-swift_out=tmp proto/gateway/v1/gateway.proto
+            - protoc --grpc-swift_opt=Visibility=Public --grpc-swift_out=tmp proto/gateway/v1/gateway.proto
             - rm -rf Sources/BaseMindGateway
             - mv tmp/proto/gateway/v1 Sources/BaseMindGateway
             - rm -rf tmp

@@ -1,7 +1,8 @@
 import BaseMindGateway
 import Foundation
 import GRPC
-import Logging
+import NIOCore
+import OSLog
 
 enum BaseMindError: Error {
     /// generic error thrown whenever there is an error communicating with the server
@@ -10,28 +11,30 @@ enum BaseMindError: Error {
     case invalidArgument
     /// thrown when the token passed to the SDK is empty
     case missingToken
-    /// thrown when the connection to the server fails
-    case connectionFailure
 }
 
-let DEFAULT_API_GATEWAY_ADDRESS = "gateway.basemind.ai"
-let DEFAULT_API_GATEWAY_PORT = 443
+public let DEFAULT_API_GATEWAY_ADDRESS = "gateway.basemind.ai"
+public let DEFAULT_API_GATEWAY_PORT = 443
+public let DEFAULT_LOGGER = Logger(subsystem: "BaseMindClient", category: "client logs")
 
-public struct Options {
+public struct ClientOptions {
+    public init(
+    ) {}
+
     /// The gRPC server address.
-    var host: String = DEFAULT_API_GATEWAY_ADDRESS
+    public var host: String = DEFAULT_API_GATEWAY_ADDRESS
     /// The gRPC server port.
-    var port: Int = DEFAULT_API_GATEWAY_PORT
+    public var port: Int = DEFAULT_API_GATEWAY_PORT
     /// A flag dictating whether debug messages will be logged.
-    var debug: Bool = false
+    public var debug: Bool = false
     /// The ID of the prompt configuration to use.
     ///
     /// Note: This value is optional. If not provided, the default prompt configuration will be used.
-    var promptConfigId: String?
+    public var promptConfigId: String?
     /// The logger instance to use.
     ///
     /// Note: messages are logged only when 'debug' is set to true.
-    var logger: Logger = .init(label: "BaseMindClient")
+    public var logger: Logger = DEFAULT_LOGGER
 }
 
 /// The BaseMindClient
@@ -40,15 +43,15 @@ public struct Options {
 /// You can also pass an options object.
 public class BaseMindClient {
     private let client: Gateway_V1_APIGatewayServiceAsyncClient
-    private let apiToken: String
-    private let options: Options
+    private let apiKey: String
+    private let options: ClientOptions
 
-    init(apiToken: String, options: Options = Options()) throws {
-        if apiToken == "" {
+    public init(apiKey: String, options: ClientOptions = ClientOptions()) throws {
+        if apiKey == "" {
             throw BaseMindError.missingToken
         }
 
-        self.apiToken = apiToken
+        self.apiKey = apiKey
         self.options = options
 
         if self.options.debug {
@@ -56,23 +59,12 @@ public class BaseMindClient {
         }
 
         let eventLoopGroup = PlatformSupport.makeEventLoopGroup(loopCount: 1)
-        do {
-            let channel = try GRPCChannelPool.with(
-                target: .host(options.host, port: options.port),
-                transportSecurity: .plaintext,
-                eventLoopGroup: eventLoopGroup
-            )
-            client = Gateway_V1_APIGatewayServiceAsyncClient(channel: channel)
+        let builder = ClientConnection.insecure(group: eventLoopGroup) // ClientConnection.usingPlatformAppropriateTLS(for: eventLoopGroup)
+        let connection = builder.connect(host: options.host, port: options.port)
+        client = Gateway_V1_APIGatewayServiceAsyncClient(channel: connection)
 
-            if self.options.debug {
-                self.options.logger.debug("Successfully connected to BaseMind.AI server on \(options.host):\(options.port).")
-            }
-        } catch {
-            if self.options.debug {
-                self.options.logger.debug("Failed to connect to the BaseMind.AI server on \(options.host):\(options.port). Error: \(error).")
-            }
-
-            throw BaseMindError.connectionFailure
+        if self.options.debug {
+            self.options.logger.debug("connected to BaseMind.AI server on \(options.host):\(options.port).")
         }
     }
 
@@ -81,7 +73,7 @@ public class BaseMindClient {
 
         options.customMetadata.add(
             name: "authorization",
-            value: "Bearer \(apiToken)"
+            value: "Bearer \(apiKey)"
         )
 
         return options
@@ -101,8 +93,17 @@ public class BaseMindClient {
         return request
     }
 
+    /// Close the client, and any connections associated with it. Any ongoing RPCs may fail.
+    ///
+    /// - Returns: Returns a future which will be resolved when shutdown has completed.
+    public func close() -> EventLoopFuture<Void> {
+        client.channel.close()
+    }
+
     /// Request an LLM Prompt.
+    ///
     /// - Parameter templateVariables: A dictionary of key/value strings. This dictionary should supply the values required for any template variables defined in the BaseMind dashboard.
+    ///
     /// - Returns: A prompt response object.
     public func requestPrompt(_ templateVariables: [String: String]? = nil) async throws -> Gateway_V1_PromptResponse {
         do {
@@ -124,6 +125,12 @@ public class BaseMindClient {
         }
     }
 
+    /// Request an LLM Streaming Prompt
+    ///
+    /// - Parameter templateVariables: A dictionary of key/value strings. This dictionary should supply the values required for any template variables defined in the BaseMind dashboard.
+    ///
+    /// - Returns: A stream conforming to the AsyncIterator protocol. Iterate the stream to access each chunk of the result in the order it is
+    /// being transmitted by the server.
     public func requestStream(_ templateVariables: [String: String]? = nil) async throws -> ThrowingRequestStream<Gateway_V1_StreamingPromptResponse> {
         if options.debug {
             options.logger.debug("requesting streaming prompt")
@@ -143,6 +150,9 @@ public class BaseMindClient {
     }
 }
 
+/// An AsyncIterator of StreamingPromptResponse elements.
+///
+/// Throws BaseMindError.
 public struct ThrowingRequestStream<Element: Sendable>: AsyncIteratorProtocol {
     private var iterator: GRPCAsyncResponseStream<Element>.AsyncIterator
     private let logError: (_ error: Error) -> Void

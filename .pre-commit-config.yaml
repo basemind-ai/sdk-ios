@@ -25,8 +25,3 @@ repos:
       rev: '0.52.11'
       hooks:
           - id: swiftformat
-    - repo: https://github.com/realm/SwiftLint
-      rev: '0.54.0'
-      hooks:
-          - id: swiftlint
-            entry: swiftlint --config .swiftlint.yaml --fix --strict
