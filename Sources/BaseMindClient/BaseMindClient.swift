@@ -5,6 +5,7 @@ import NIOCore
 import NIOSSL
 import OSLog
 
+/// Error types thrown by the BaseMindClient
 public enum BaseMindError: Error {
     /// generic error thrown whenever there is an error communicating with the server
     case serverError
@@ -20,6 +21,13 @@ public let DEFAULT_API_GATEWAY_ADDRESS = "gateway.basemind.ai"
 public let DEFAULT_API_GATEWAY_PORT = 443
 public let DEFAULT_LOGGER = Logger(subsystem: "BaseMindClient", category: "client logs")
 
+/// Client Options container.
+///
+/// Example usage:
+///
+///     let options = ClientOptions(debug: true)
+///     let client = BaseMindClient(apiKey: "<API_KEY>", options: options)
+///
 public struct ClientOptions {
     public init(
         host: String? = nil,
