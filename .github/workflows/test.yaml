@@ -10,7 +10,7 @@ env:
     DEEPSOURCE_DSN: ${{secrets.DEEPSOURCE_DSN}}
 jobs:
     test:
-        runs-on: ubuntu-latest
+        runs-on: macos-latest
         permissions:
             contents: read
             pull-requests: write
