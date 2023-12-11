@@ -16,7 +16,7 @@ Add the sdk in your `Package.swift` file dependencies:
 
 ```swift
     dependencies: [
-        .package(url: "https://github.com/basemind-ai/sdk-ios.git", from: "0.1.0"),
+        .package(url: "https://github.com/basemind-ai/sdk-ios.git", from: "1.0.0"),
     ]
 ```
 
@@ -95,7 +95,8 @@ All errors thrown by the client are instances of `BaseMindError`. Errors are thr
 
 1. The api key is empty (`BaseMindError.missingToken`).
 2. A server side or connectivity error occured (`BaseMindError.serverError`)
-3. A required template variable was not provided in the dictionary of the request (`BaseMindError.invalidArgument`)
+3. A required template variable was not provided in the dictionary of the request (`BaseMindError.invalidArgument`).
+4. The task containing streaming is cancelled (`BaseMindError.cancelled`).
 
 ### Options
 
