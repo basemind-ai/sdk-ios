@@ -6,6 +6,7 @@ import NIOConcurrencyHelpers
 import NIOCore
 import NIOPosix
 import NIOSSL
+import OSLog
 import SwiftProtobuf
 import XCTest
 
@@ -87,9 +88,6 @@ let caCertificate = try! NIOSSLCertificate(bytes: .init(caCert.utf8), format: .p
 
 final class MockGatewayServer: Gateway_V1_APIGatewayServiceAsyncProvider {
     public var exc: Error?
-    public var authHeader: String?
-    public var templateVariables: [String: String]?
-    public var promptConfigId: String?
     public var request: Gateway_V1_PromptRequest?
 
     init() {}
@@ -107,13 +105,28 @@ final class MockGatewayServer: Gateway_V1_APIGatewayServiceAsyncProvider {
         return response
     }
 
-    func requestStreamingPrompt(request: BaseMindGateway.Gateway_V1_PromptRequest, responseStream _: GRPC.GRPCAsyncResponseStreamWriter<BaseMindGateway.Gateway_V1_StreamingPromptResponse>, context _: GRPC.GRPCAsyncServerCallContext) async throws {
+    func requestStreamingPrompt(request: BaseMindGateway.Gateway_V1_PromptRequest, responseStream: GRPC.GRPCAsyncResponseStreamWriter<BaseMindGateway.Gateway_V1_StreamingPromptResponse>, context _: GRPC.GRPCAsyncServerCallContext) async throws {
         self.request = request
 
         if let exc {
             throw exc
         }
+
+        for el in ["1", "2", "3"] {
+            var response = Gateway_V1_StreamingPromptResponse()
+            response.content = el
+
+            if el == "3" {
+                response.finishReason = "done"
+            }
+
+            try await responseStream.send(response)
+        }
     }
+}
+
+enum TestingError: Error {
+    case unknown
 }
 
 /// Client test suite
@@ -129,12 +142,12 @@ final class BaseMindClientTests: XCTestCase {
     override func setUp() {
         super.setUp()
 
-        group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        group = PlatformSupport.makeEventLoopGroup(loopCount: 1)
         provider = MockGatewayServer()
     }
 
     override func tearDown() async throws {
-        try await server.close().get()
+        try closeServer()
         server = nil
 
         try await group.shutdownGracefully()
@@ -145,8 +158,19 @@ final class BaseMindClientTests: XCTestCase {
         try await super.tearDown()
     }
 
+    private func closeServer() throws {
+        if let srv = server {
+            try? srv.close().wait()
+        }
+    }
+
     private func startServer() throws {
-        server = try Server.insecure(group: group)
+        server = try Server
+            .usingTLSBackedByNIOSSL(
+                on: group,
+                certificateChain: [certificate],
+                privateKey: key
+            )
             .withServiceProviders([provider])
             .bind(host: "127.0.0.1", port: 0)
             .wait()
@@ -154,21 +178,211 @@ final class BaseMindClientTests: XCTestCase {
 
     func makeClient() throws -> BaseMindClient {
         var options = ClientOptions()
+        options.debug = true
         options.host = "127.0.0.1"
         options.port = server.channel.localAddress!.port!
+        options.promptConfigId = "123abc"
 
         return try BaseMindClient(apiKey: token, options: options)
     }
 
+    // MARK: initializer tests
+
     func testThrowsWhenTokenIsEmpty() throws {
-        XCTAssertThrowsError(try BaseMindClient(apiKey: ""))
+        do {
+            try BaseMindClient(apiKey: "")
+            XCTFail("should throw error")
+        } catch {
+            if let err = error as? BaseMindError {
+                XCTAssertEqual(err, BaseMindError.missingToken)
+            } else {
+                XCTFail("failed to match error")
+            }
+        }
     }
 
-    func testReturnsReponse() async throws {
+    func testDoesNotThrowForNonEmptyKey() {
+        let apiKey = "apiKey"
+
+        do {
+            let client = try BaseMindClient(apiKey: apiKey)
+
+            XCTAssertNotNil(client)
+        } catch {
+            XCTFail("failed to initialize client with valid API key: \(error)")
+        }
+    }
+
+    func testClientOptions() {
+        let apiKey = "apiKey"
+        let options = ClientOptions(host: "custom_host", port: 1234, debug: true, promptConfigId: "abc123", logger: Logger(subsystem: "test", category: "test"))
+
+        do {
+            let client = try BaseMindClient(apiKey: apiKey, options: options)
+
+            XCTAssertNotNil(client)
+        } catch {
+            XCTFail("Failed to initialize client with valid API key and custom options: \(error)")
+        }
+    }
+
+    // MARK: request prompt tests
+
+    func testRequestPromptSuccessScenario() async throws {
         try startServer()
 
         let client = try makeClient()
-        let response = try await client.requestPrompt()
+        let response = try await client.requestPrompt(["key": "value"])
+
         XCTAssertEqual(response.content, "abc")
+        XCTAssertEqual(provider.request?.templateVariables, ["key": "value"])
+        XCTAssertEqual(provider.request?.promptConfigID, "123abc")
+    }
+
+    func testRequestPromptInvalidArgumentErrorScenario() async throws {
+        try startServer()
+
+        provider.exc = GRPCStatus(code: GRPCStatus.Code.invalidArgument, message: "invalid key")
+
+        let client = try makeClient()
+
+        do {
+            _ = try await client.requestPrompt()
+            XCTFail("should throw error")
+        } catch {
+            if let err = error as? BaseMindError {
+                XCTAssertEqual(err, BaseMindError.invalidArgument)
+            } else {
+                XCTFail("failed to match error")
+            }
+        }
+    }
+
+    func testRequestPromptServerErrorScenario() async throws {
+        try startServer()
+
+        provider.exc = GRPCStatus(code: GRPCStatus.Code.internalError, message: "oops")
+
+        let client = try makeClient()
+
+        do {
+            _ = try await client.requestPrompt()
+            XCTFail("should throw error")
+        } catch {
+            if let err = error as? BaseMindError {
+                XCTAssertEqual(err, BaseMindError.serverError)
+            } else {
+                XCTFail("failed to match error")
+            }
+        }
+    }
+
+    func testRequestUnknownErrorScenario() async throws {
+        try startServer()
+
+        provider.exc = TestingError.unknown
+
+        let client = try makeClient()
+
+        do {
+            _ = try await client.requestPrompt()
+            XCTFail("should throw error")
+        } catch {
+            if let err = error as? BaseMindError {
+                XCTAssertEqual(err, BaseMindError.serverError)
+            } else {
+                XCTFail("failed to match error")
+            }
+        }
+    }
+
+    // MARK: request stream tests
+
+    func testRequestStreamSuccessScenario() async throws {
+        try startServer()
+
+        let client = try makeClient()
+        let stream = try await client.requestStream(["key": "value"])
+        var responses: [String] = []
+        var finishReason = ""
+        for try await response in stream {
+            responses.append(response.content)
+            if response.finishReason != "" {
+                finishReason = response.finishReason
+            }
+        }
+        XCTAssertEqual(responses, ["1", "2", "3"])
+        XCTAssertEqual(finishReason, "done")
+        XCTAssertEqual(provider.request?.templateVariables, ["key": "value"])
+        XCTAssertEqual(provider.request?.promptConfigID, "123abc")
+    }
+
+    func testRequestStreamInvalidArgumentErrorScenario() async throws {
+        try startServer()
+
+        let client = try makeClient()
+        let stream = try await client.requestStream()
+
+        provider.exc = GRPCStatus(code: GRPCStatus.Code.invalidArgument, message: "invalid key")
+
+        do {
+            do {
+                for try await _ in stream {
+                    XCTFail("should throw error")
+                }
+            } catch {
+                if let err = error as? BaseMindError {
+                    XCTAssertEqual(err, BaseMindError.invalidArgument)
+                } else {
+                    XCTFail("failed to match error")
+                }
+            }
+        }
+    }
+
+    func testRequestStreamServerErrorScenario() async throws {
+        try startServer()
+
+        let client = try makeClient()
+        let stream = try await client.requestStream()
+
+        provider.exc = GRPCStatus(code: GRPCStatus.Code.internalError, message: "oops")
+
+        do {
+            do {
+                for try await _ in stream {
+                    XCTFail("should throw error")
+                }
+            } catch {
+                if let err = error as? BaseMindError {
+                    XCTAssertEqual(err, BaseMindError.serverError)
+                } else {
+                    XCTFail("failed to match error")
+                }
+            }
+        }
+    }
+
+    func testRequestStreamUnknownErrorScenario() async throws {
+        try startServer()
+
+        let client = try makeClient()
+        let stream = try await client.requestStream()
+
+        provider.exc = TestingError.unknown
+
+        do {
+            do {
+                for try await _ in stream {
+                    XCTFail("should throw error")
+                }
+            } catch {
+                if let err = error as? BaseMindError {
+                    XCTAssertEqual(err, BaseMindError.serverError)
+                } else {
+                    XCTFail("failed to match error")
+                }
+            }
+        }
     }
 }

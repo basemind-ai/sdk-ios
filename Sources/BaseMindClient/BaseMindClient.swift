@@ -2,9 +2,10 @@ import BaseMindGateway
 import Foundation
 import GRPC
 import NIOCore
+import NIOSSL
 import OSLog
 
-enum BaseMindError: Error {
+public enum BaseMindError: Error {
     /// generic error thrown whenever there is an error communicating with the server
     case serverError
     /// thrown when the server responds to a request with the gRPC 'invalid argument' status
@@ -19,7 +20,28 @@ public let DEFAULT_LOGGER = Logger(subsystem: "BaseMindClient", category: "clien
 
 public struct ClientOptions {
     public init(
-    ) {}
+        host: String? = nil,
+        port: Int? = nil,
+        debug: Bool? = nil,
+        promptConfigId: String? = nil,
+        logger: Logger? = nil
+    ) {
+        if let host {
+            self.host = host
+        }
+        if let port {
+            self.port = port
+        }
+        if let debug {
+            self.debug = debug
+        }
+        if let promptConfigId {
+            self.promptConfigId = promptConfigId
+        }
+        if let logger {
+            self.logger = logger
+        }
+    }
 
     /// The gRPC server address.
     public var host: String = DEFAULT_API_GATEWAY_ADDRESS
@@ -59,8 +81,12 @@ public class BaseMindClient {
         }
 
         let eventLoopGroup = PlatformSupport.makeEventLoopGroup(loopCount: 1)
-        let builder = ClientConnection.insecure(group: eventLoopGroup) // ClientConnection.usingPlatformAppropriateTLS(for: eventLoopGroup)
-        let connection = builder.connect(host: options.host, port: options.port)
+        let connection = ClientConnection
+            .usingTLSBackedByNIOSSL(on: eventLoopGroup)
+            .withTLS(trustRoots: .certificates([]))
+            .withTLS(certificateVerification: .none)
+            .connect(host: options.host, port: options.port)
+
         client = Gateway_V1_APIGatewayServiceAsyncClient(channel: connection)
 
         if self.options.debug {
@@ -139,25 +165,28 @@ public class BaseMindClient {
         let request = createRequest(templateVariables)
         let stream = client.requestStreamingPrompt(request, callOptions: createCallOptions())
 
-        return ThrowingRequestStream(stream: stream,
-                                     logError: {
-                                         (error: Error) in
-                                         if self.options.debug {
-                                             self.options.logger.debug("erroring streaming prompt \(error)")
-                                         }
+        let logError = {
+            (error: Error) in
+            if self.options.debug {
+                self.options.logger.debug("erroring streaming prompt \(error)")
+            }
+        }
 
-                                     })
+        return ThrowingRequestStream(stream: stream, logError: logError)
     }
 }
 
 /// An AsyncIterator of StreamingPromptResponse elements.
 ///
 /// Throws BaseMindError.
-public struct ThrowingRequestStream<Element: Sendable>: AsyncIteratorProtocol {
+public struct ThrowingRequestStream<Value: Sendable>: AsyncSequence, AsyncIteratorProtocol {
+    public typealias AsyncIterator = ThrowingRequestStream<Value>
+    public typealias Element = Value
+
     private var iterator: GRPCAsyncResponseStream<Element>.AsyncIterator
     private let logError: (_ error: Error) -> Void
 
-    init(stream: GRPCAsyncResponseStream<Element>, logError: @escaping (_ error: Error) -> Void) {
+    init(stream: GRPCAsyncResponseStream<Value>, logError: @escaping (_ error: Error) -> Void) {
         iterator = stream.makeAsyncIterator()
         self.logError = logError
     }
@@ -174,5 +203,9 @@ public struct ThrowingRequestStream<Element: Sendable>: AsyncIteratorProtocol {
             }
             throw BaseMindError.serverError
         }
+    }
+
+    public func makeAsyncIterator() -> AsyncIterator {
+        self
     }
 }
