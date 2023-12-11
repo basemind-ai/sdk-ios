@@ -2,7 +2,7 @@ version = 1
 
 exclude_patterns = ["Sources/BaseMindGateway/**"]
 
-test_patterns = ["**/Tests/**"]
+test_patterns = ["Tests/**"]
 
 [[analyzers]]
 name = "test-coverage"

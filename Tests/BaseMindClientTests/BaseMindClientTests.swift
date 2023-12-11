@@ -136,6 +136,7 @@ final class BaseMindClientTests: XCTestCase {
     let token = "abcJeronimo"
 
     var server: Server!
+    var client: BaseMindClient!
     var provider: MockGatewayServer!
     var group: EventLoopGroup!
 
@@ -150,6 +151,9 @@ final class BaseMindClientTests: XCTestCase {
         try closeServer()
         server = nil
 
+        try closeClient()
+        client = nil
+
         try await group.shutdownGracefully()
         group = nil
 
@@ -159,8 +163,14 @@ final class BaseMindClientTests: XCTestCase {
     }
 
     private func closeServer() throws {
-        if let srv = server {
-            try? srv.close().wait()
+        if let server {
+            try? server.close().wait()
+        }
+    }
+
+    private func closeClient() throws {
+        if let client {
+            try? client.close().wait()
         }
     }
 
@@ -182,15 +192,15 @@ final class BaseMindClientTests: XCTestCase {
         options.host = "127.0.0.1"
         options.port = server.channel.localAddress!.port!
         options.promptConfigId = "123abc"
-
-        return try BaseMindClient(apiKey: token, options: options)
+        client = try BaseMindClient(apiKey: token, options: options)
+        return client
     }
 
     // MARK: initializer tests
 
     func testThrowsWhenTokenIsEmpty() throws {
         do {
-            try BaseMindClient(apiKey: "")
+            _ = try BaseMindClient(apiKey: "")
             XCTFail("should throw error")
         } catch {
             if let err = error as? BaseMindError {
@@ -305,12 +315,14 @@ final class BaseMindClientTests: XCTestCase {
         let stream = try await client.requestStream(["key": "value"])
         var responses: [String] = []
         var finishReason = ""
+
         for try await response in stream {
             responses.append(response.content)
             if !response.finishReason.isEmpty {
                 finishReason = response.finishReason
             }
         }
+
         XCTAssertEqual(responses, ["1", "2", "3"])
         XCTAssertEqual(finishReason, "done")
         XCTAssertEqual(provider.request?.templateVariables, ["key": "value"])
@@ -326,16 +338,14 @@ final class BaseMindClientTests: XCTestCase {
         provider.exc = GRPCStatus(code: GRPCStatus.Code.invalidArgument, message: "invalid key")
 
         do {
-            do {
-                for try await _ in stream {
-                    XCTFail("should throw error")
-                }
-            } catch {
-                if let err = error as? BaseMindError {
-                    XCTAssertEqual(err, BaseMindError.invalidArgument)
-                } else {
-                    XCTFail("failed to match error")
-                }
+            for try await _ in stream {
+                XCTFail("should throw error")
+            }
+        } catch {
+            if let err = error as? BaseMindError {
+                XCTAssertEqual(err, BaseMindError.invalidArgument)
+            } else {
+                XCTFail("failed to match error")
             }
         }
     }
@@ -349,16 +359,14 @@ final class BaseMindClientTests: XCTestCase {
         provider.exc = GRPCStatus(code: GRPCStatus.Code.internalError, message: "oops")
 
         do {
-            do {
-                for try await _ in stream {
-                    XCTFail("should throw error")
-                }
-            } catch {
-                if let err = error as? BaseMindError {
-                    XCTAssertEqual(err, BaseMindError.serverError)
-                } else {
-                    XCTFail("failed to match error")
-                }
+            for try await _ in stream {
+                XCTFail("should throw error")
+            }
+        } catch {
+            if let err = error as? BaseMindError {
+                XCTAssertEqual(err, BaseMindError.serverError)
+            } else {
+                XCTFail("failed to match error")
             }
         }
     }
@@ -382,6 +390,33 @@ final class BaseMindClientTests: XCTestCase {
                 } else {
                     XCTFail("failed to match error")
                 }
+            }
+        }
+    }
+
+    func testRequestStreamCancellationScenario() async throws {
+        try startServer()
+
+        let client = try makeClient()
+        let stream = try await client.requestStream()
+
+        let task = Task { () -> [String] in
+            var responses: [String] = []
+
+            for try await response in stream {
+                responses.append(response.content)
+            }
+
+            return responses
+        }
+
+        do {
+            task.cancel()
+        } catch {
+            if let err = error as? BaseMindError {
+                XCTAssertEqual(err, BaseMindError.cancelled)
+            } else {
+                XCTFail("failed to match error")
             }
         }
     }

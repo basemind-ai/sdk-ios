@@ -12,6 +12,8 @@ public enum BaseMindError: Error {
     case invalidArgument
     /// thrown when the token passed to the SDK is empty
     case missingToken
+    /// thrown when a stream is cancelled
+    case cancelled
 }
 
 public let DEFAULT_API_GATEWAY_ADDRESS = "gateway.basemind.ai"
@@ -145,7 +147,9 @@ public class BaseMindClient {
             }
 
             if let status = error as? GRPCStatus {
-                throw status.code == GRPCStatus.Code.invalidArgument ? BaseMindError.invalidArgument : BaseMindError.serverError
+                if status.code == GRPCStatus.Code.invalidArgument {
+                    throw BaseMindError.invalidArgument
+                }
             }
             throw BaseMindError.serverError
         }
@@ -167,6 +171,7 @@ public class BaseMindClient {
 
         let logError = {
             (error: Error) in
+
             if self.options.debug {
                 self.options.logger.debug("erroring streaming prompt \(error)")
             }
@@ -192,15 +197,18 @@ public struct ThrowingRequestStream<Value: Sendable>: AsyncSequence, AsyncIterat
     }
 
     public mutating func next() async throws -> Element? {
-        if Task.isCancelled { throw GRPCStatus(code: .cancelled) }
+        if Task.isCancelled { throw BaseMindError.cancelled }
         do {
             return try await iterator.next()
         } catch {
             logError(error)
 
             if let status = error as? GRPCStatus {
-                throw status.code == GRPCStatus.Code.invalidArgument ? BaseMindError.invalidArgument : BaseMindError.serverError
+                if status.code == GRPCStatus.Code.invalidArgument {
+                    throw BaseMindError.invalidArgument
+                }
             }
+
             throw BaseMindError.serverError
         }
     }
