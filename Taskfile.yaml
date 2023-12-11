@@ -11,6 +11,7 @@ tasks:
             - pre-commit install && pre-commit install --hook-type commit-msg && pre-commit install-hooks
     update:
         cmds:
+            - command -v protoc &> /dev/null && brew update && brew upgrade
             - pre-commit autoupdate
             - swift package update
             - swift outdated
