@@ -1,5 +1,11 @@
 # BaseMind.AI Swift (iOS/MacOS) SDK
 
+<div align="center">
+
+[![Discord](https://img.shields.io/discord/1153195687459160197)](https://discord.gg/ZSV2CQ86yg)
+
+</div>
+
 This repository hosts the BaseMind.AI Swift SDK. The SDK is a gRPC client library for connecting with the BaseMind.AI platform.
 
 It supports iOS >= 13 and MacOS >= 12.
