@@ -307,7 +307,7 @@ final class BaseMindClientTests: XCTestCase {
         var finishReason = ""
         for try await response in stream {
             responses.append(response.content)
-            if response.finishReason != "" {
+            if !response.finishReason.isEmpty {
                 finishReason = response.finishReason
             }
         }

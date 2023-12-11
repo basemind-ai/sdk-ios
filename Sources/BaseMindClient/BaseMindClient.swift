@@ -69,7 +69,7 @@ public class BaseMindClient {
     private let options: ClientOptions
 
     public init(apiKey: String, options: ClientOptions = ClientOptions()) throws {
-        if apiKey == "" {
+        if apiKey.isEmpty {
             throw BaseMindError.missingToken
         }
 
