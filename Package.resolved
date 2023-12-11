@@ -5,8 +5,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/grpc/grpc-swift.git",
       "state" : {
-        "revision" : "663a85221ecf93e4b8fb1f0fdd34d4b27ae78665",
-        "version" : "1.20.0"
+        "revision" : "6ade19f0b57f5fc436dfecfced83f3c84d1095b9",
+        "version" : "1.21.0"
       }
     },
     {
@@ -32,8 +32,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-http-types",
       "state" : {
-        "revision" : "4c542094de9b8316809a28ef51c434ee6ce6ee43",
-        "version" : "1.0.1"
+        "revision" : "1827dc94bdab2eb5f2fc804e9b0cb43574282566",
+        "version" : "1.0.2"
       }
     },
     {
