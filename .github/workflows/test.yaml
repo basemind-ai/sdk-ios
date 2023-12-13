@@ -27,7 +27,7 @@ jobs:
             - name: Run tests
               run: swift test --enable-code-coverage
             - name: Create Coverage Report
-              uses: maxep/spm-lcov-action@0.3.0
+              uses: maxep/spm-lcov-action@0.3.1
               with:
                   output-file: ./coverage/lcov.info
             - name: Upload Coverage Report
