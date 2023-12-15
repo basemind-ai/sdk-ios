@@ -94,7 +94,7 @@ It returns a data container that is both an AsyncSequence and an AsyncIterator. 
 All errors thrown by the client are instances of `BaseMindError`. Errors are thrown in the following cases:
 
 1. The api key is empty (`BaseMindError.missingToken`).
-2. A server side or connectivity error occured (`BaseMindError.serverError`)
+2. A server side or connectivity error occurred (`BaseMindError.serverError`)
 3. A required template variable was not provided in the dictionary of the request (`BaseMindError.invalidArgument`).
 4. The task containing streaming is cancelled (`BaseMindError.cancelled`).
 
