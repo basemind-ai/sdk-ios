@@ -187,11 +187,12 @@ final class BaseMindClientTests: XCTestCase {
     }
 
     func makeClient() throws -> BaseMindClient {
-        var options = ClientOptions()
-        options.debug = true
-        options.host = "127.0.0.1"
-        options.port = server.channel.localAddress!.port!
-        options.promptConfigId = "123abc"
+        let options: ClientOptions = .init(
+            host: "127.0.0.1",
+            port: server.channel.localAddress!.port!,
+            debug: true,
+            promptConfigId: "123abc"
+        )
         client = try BaseMindClient(apiKey: token, options: options)
         return client
     }
@@ -235,7 +236,17 @@ final class BaseMindClientTests: XCTestCase {
             XCTFail("Failed to initialize client with valid API key and custom options: \(error)")
         }
     }
-
+    
+    func testClientOptionsDefaults() {
+        let options: ClientOptions = .init()
+        
+        XCTAssertEqual(options.host, DEFAULT_API_GATEWAY_ADDRESS)
+        XCTAssertEqual(options.port, DEFAULT_API_GATEWAY_PORT)
+        XCTAssertFalse(options.debug)
+        XCTAssertNil(options.promptConfigId)
+        XCTAssertNotNil(options.logger)
+    }
+    
     // MARK: request prompt tests
 
     func testRequestPromptSuccessScenario() async throws {

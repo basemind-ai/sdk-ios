@@ -29,36 +29,34 @@ public let DEFAULT_LOGGER = Logger(subsystem: "BaseMindClient", category: "clien
 ///     let client = BaseMindClient(apiKey: "<API_KEY>", options: options)
 ///
 public struct ClientOptions {
+    /// Initializes a new instance of `ClientOptions`.
+    ///
+    /// - Parameters:
+    ///   - host: The gRPC server address. Defaults to `DEFAULT_API_GATEWAY_ADDRESS`.
+    ///   - port: The gRPC server port. Defaults to `DEFAULT_API_GATEWAY_PORT`.
+    ///   - debug: A flag indicating whether debug messages will be logged. Defaults to `false`.
+    ///   - promptConfigId: The ID of the prompt configuration to use. Defaults to `nil`.
+    ///   - logger: The logger instance to use. Defaults to `DEFAULT_LOGGER`.
     public init(
-        host: String? = nil,
-        port: Int? = nil,
-        debug: Bool? = nil,
+        host: String = DEFAULT_API_GATEWAY_ADDRESS,
+        port: Int = DEFAULT_API_GATEWAY_PORT,
+        debug: Bool = false,
         promptConfigId: String? = nil,
-        logger: Logger? = nil
+        logger: Logger = DEFAULT_LOGGER
     ) {
-        if let host {
-            self.host = host
-        }
-        if let port {
-            self.port = port
-        }
-        if let debug {
-            self.debug = debug
-        }
-        if let promptConfigId {
-            self.promptConfigId = promptConfigId
-        }
-        if let logger {
-            self.logger = logger
-        }
+        self.host = host
+        self.port = port
+        self.debug = debug
+        self.promptConfigId = promptConfigId
+        self.logger = logger
     }
 
     /// The gRPC server address.
-    public var host: String = DEFAULT_API_GATEWAY_ADDRESS
+    public var host: String
     /// The gRPC server port.
-    public var port: Int = DEFAULT_API_GATEWAY_PORT
+    public var port: Int
     /// A flag dictating whether debug messages will be logged.
-    public var debug: Bool = false
+    public var debug: Bool
     /// The ID of the prompt configuration to use.
     ///
     /// Note: This value is optional. If not provided, the default prompt configuration will be used.
@@ -66,7 +64,7 @@ public struct ClientOptions {
     /// The logger instance to use.
     ///
     /// Note: messages are logged only when 'debug' is set to true.
-    public var logger: Logger = DEFAULT_LOGGER
+    public var logger: Logger
 }
 
 /// The BaseMindClient
@@ -78,7 +76,7 @@ public class BaseMindClient {
     private let apiKey: String
     private let options: ClientOptions
 
-    public init(apiKey: String, options: ClientOptions = ClientOptions()) throws {
+    public init(apiKey: String, options: ClientOptions = .init()) throws {
         if apiKey.isEmpty {
             throw BaseMindError.missingToken
         }
