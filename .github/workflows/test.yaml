@@ -21,7 +21,7 @@ jobs:
                   submodules: recursive
                   ref: ${{ github.event.pull_request.head.sha }}
             - name: Setup Swift
-              uses: swift-actions/setup-swift@v1
+              uses: swift-actions/setup-swift@v2
             - name: Download the DeepSource CLI
               run: curl https://deepsource.io/cli | sh
             - name: Run tests
