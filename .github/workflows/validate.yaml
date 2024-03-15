@@ -15,7 +15,7 @@ jobs:
               with:
                   submodules: recursive
             - name: Setup Swift
-              uses: swift-actions/setup-swift@v1
+              uses: swift-actions/setup-swift@v2
             - name: Setup Node
               uses: actions/setup-node@v4
               with:
